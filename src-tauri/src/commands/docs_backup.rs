@@ -135,7 +135,7 @@ pub fn docs_preview_project(
 ) -> Result<serde_json::Value, String> {
     // 向导预览：列出 include 条目及其落点与现存目标文件数（dry-run 语义）
     let settings = store.get_backup_settings().map_err(|e| e.to_string())?;
-    let entries: Vec<String> = serde_json::from_str(super::docs_store::DEFAULT_INCLUDE_JSON)
+    let entries: Vec<String> = serde_json::from_str(crate::core::docs_store::DEFAULT_INCLUDE_JSON)
         .unwrap_or_default();
     let repo = std::path::PathBuf::from(&repo_path);
     let mut rows: Vec<serde_json::Value> = Vec::new();

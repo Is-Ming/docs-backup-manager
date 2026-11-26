@@ -279,13 +279,17 @@ fn batch_git_backup(
     let branch = &settings.branch;
     match run_git(vault, &["push", "origin", branch]) {
         Ok(_) => {
-            let sha = run_git(vault, &["rev-parse", "--short", "HEAD"]).ok();
-            Ok((true, true, Some(sha.trim().to_string())))
+            let sha = run_git(vault, &["rev-parse", "--short", "HEAD"])
+                .ok()
+                .map(|s| s.trim().to_string());
+            Ok((true, true, sha))
         }
         Err(e) => {
             result.errors.push(format!("push 失败（下次自动补推）：{e:#}"));
-            let sha = run_git(vault, &["rev-parse", "--short", "HEAD"]).ok();
-            Ok((true, false, Some(sha.trim().to_string())))
+            let sha = run_git(vault, &["rev-parse", "--short", "HEAD"])
+                .ok()
+                .map(|s| s.trim().to_string());
+            Ok((true, false, sha))
         }
     }
 }
