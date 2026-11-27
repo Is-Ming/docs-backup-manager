@@ -1,20 +1,11 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AppProvider } from "./context/AppContext";
 import { ThemeProvider, useThemeContext } from "./context/ThemeContext";
-import { HelpDialog } from "./components/HelpDialog";
 import { CloseActionGuard } from "./components/CloseActionGuard";
-import { FirstRunRestoreDialog } from "./components/FirstRunRestoreDialog";
-import { WhatsNewOnUpdate } from "./components/WhatsNewDialog";
 import { Layout } from "./components/Layout";
-import { Dashboard } from "./views/Dashboard";
-import { MySkills } from "./views/MySkills";
-import { WorkspaceView } from "./views/WorkspaceView";
-import { CODING_WORKSPACE_CONFIG, LOBSTER_WORKSPACE_CONFIG } from "./views/workspaceConfigs";
-import { InstallSkills } from "./views/InstallSkills";
-import { Settings } from "./views/Settings";
-import { ProjectDetail } from "./views/ProjectDetail";
 import { BackupCenter } from "./views/BackupCenter";
+import { Settings } from "./views/Settings";
 
 function ThemedToaster() {
   const { resolvedTheme } = useThemeContext();
@@ -40,23 +31,13 @@ function App() {
         <BrowserRouter>
           <Routes>
             <Route element={<Layout />}>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/my-skills" element={<MySkills />} />
-              <Route path="/global-workspace" element={<WorkspaceView config={CODING_WORKSPACE_CONFIG} />} />
-              <Route path="/global-workspace/:agentKey" element={<WorkspaceView config={CODING_WORKSPACE_CONFIG} />} />
-              <Route path="/lobster-workspace" element={<WorkspaceView config={LOBSTER_WORKSPACE_CONFIG} />} />
-              <Route path="/lobster-workspace/:agentKey" element={<WorkspaceView config={LOBSTER_WORKSPACE_CONFIG} />} />
-              <Route path="/install" element={<InstallSkills />} />
-              <Route path="/backup" element={<BackupCenter />} />
-              <Route path="/project/:id" element={<ProjectDetail />} />
+              <Route path="/" element={<BackupCenter />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
           </Routes>
-          <HelpDialog />
-          <CloseActionGuard />
-          <FirstRunRestoreDialog />
-          <WhatsNewOnUpdate />
         </BrowserRouter>
+        <CloseActionGuard />
         <ThemedToaster />
       </AppProvider>
     </ThemeProvider>
