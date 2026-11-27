@@ -336,7 +336,9 @@ impl DocsStore {
 }
 
 /// SafetyGate：include 条目必须是 repo 之下的相对路径，拒绝绝对路径与 `..` 逃逸。
+/// 不要求条目当前存在——项目里暂缺的条目在同步时自动跳过（中央仓留存历史快照）。
 fn validate_include_entries(repo: &PathBuf, include_json: &str) -> Result<(), String> {
+    let _ = repo;
     let entries: Vec<String> = serde_json::from_str(include_json)
         .map_err(|e| format!("include 清单不是合法 JSON 数组：{e}"))?;
     for entry in &entries {
@@ -351,10 +353,6 @@ fn validate_include_entries(repo: &PathBuf, include_json: &str) -> Result<(), St
             if matches!(comp, std::path::Component::ParentDir) {
                 return Err(format!("include 条目不允许 .. 逃逸：{entry}"));
             }
-        }
-        let full = repo.join(entry);
-        if !full.exists() {
-            return Err(format!("include 条目在项目中不存在：{entry}"));
         }
     }
     Ok(())

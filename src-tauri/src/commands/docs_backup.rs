@@ -126,17 +126,20 @@ pub fn docs_set_settings(
         .map_err(|e| e.to_string())
 }
 
-/// 注册成功后的首次同步：只同步该项目，不做 git 批次（由下一轮统一收口）。
+/// 注册向导预览：按传入的 include 清单列出映射与目标现存文件数（dry-run 语义）。
 #[tauri::command]
 pub fn docs_preview_project(
     store: State<'_, Arc<DocsStore>>,
     name: String,
     repo_path: String,
+    include_json: Option<String>,
 ) -> Result<serde_json::Value, String> {
     // 向导预览：列出 include 条目及其落点与现存目标文件数（dry-run 语义）
     let settings = store.get_backup_settings().map_err(|e| e.to_string())?;
-    let entries: Vec<String> = serde_json::from_str(crate::core::docs_store::DEFAULT_INCLUDE_JSON)
-        .unwrap_or_default();
+    let entries: Vec<String> = match include_json {
+        Some(json) => serde_json::from_str(&json).map_err(|e| e.to_string())?,
+        None => serde_json::from_str(crate::core::docs_store::DEFAULT_INCLUDE_JSON).unwrap_or_default(),
+    };
     let repo = std::path::PathBuf::from(&repo_path);
     let mut rows: Vec<serde_json::Value> = Vec::new();
     for entry in &entries {

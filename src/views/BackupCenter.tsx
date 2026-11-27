@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { toast } from "sonner";
 import {
   CloudUpload,
@@ -13,6 +14,7 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
+  X,
 } from "lucide-react";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 
@@ -63,6 +65,11 @@ interface PreviewRow {
   dstExistingFiles: number;
 }
 
+const PRESET_ENTRIES = ["docs/", "openspec/", "AGENTS.md", ".codebuddy/", ".workbuddy/memory/"];
+
+const basenameOf = (p: string) =>
+  p.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? "";
+
 const emptySettings: BackupSettings = {
   vault_path: "",
   remote: null,
@@ -85,6 +92,27 @@ export function BackupCenter() {
   // 注册表单
   const [formName, setFormName] = useState("");
   const [formPath, setFormPath] = useState("");
+  // 同步清单：常见条目勾选 + 自定义条目
+  const [includeEntries, setIncludeEntries] = useState<string[]>(["docs/"]);
+  const [customEntry, setCustomEntry] = useState("");
+
+  const toggleEntry = (entry: string) => {
+    setIncludeEntries((prev) =>
+      prev.includes(entry) ? prev.filter((e) => e !== entry) : [...prev, entry]
+    );
+  };
+
+  const addCustomEntry = () => {
+    const entry = customEntry.trim().replace(/\\/g, "/");
+    if (!entry) return;
+    if (includeEntries.includes(entry)) {
+      toast.warning("该条目已在清单中");
+      setCustomEntry("");
+      return;
+    }
+    setIncludeEntries((prev) => [...prev, entry]);
+    setCustomEntry("");
+  };
 
   // 设置表单
   const [formVault, setFormVault] = useState("");
@@ -146,15 +174,40 @@ export function BackupCenter() {
     }
   };
 
+  const browsePath = async () => {
+    try {
+      const picked = await openDialog({ directory: true, multiple: false, title: "选择项目目录" });
+      if (typeof picked === "string" && picked) {
+        setFormPath(picked);
+        if (!formName.trim()) {
+          setFormName(basenameOf(picked));
+        }
+      }
+    } catch (e) {
+      toast.error(`打开目录选择器失败：${e}`);
+    }
+  };
+
   const openPreview = async () => {
-    if (!formName.trim() || !formPath.trim()) {
-      toast.error("请先填写项目名与路径");
+    const path = formPath.trim();
+    if (!path) {
+      toast.error("请先选择项目路径");
+      return;
+    }
+    const name = formName.trim() || basenameOf(path);
+    if (!name) {
+      toast.error("请填写项目名与路径");
+      return;
+    }
+    if (includeEntries.length === 0) {
+      toast.error("请至少选择一个同步条目");
       return;
     }
     try {
       const res = await invoke<{ rows: PreviewRow[] }>("docs_preview_project", {
-        name: formName.trim(),
-        repoPath: formPath.trim(),
+        name,
+        repoPath: path,
+        includeJson: JSON.stringify(includeEntries),
       });
       setPreviewRows(res.rows);
       setShowPreview(true);
@@ -164,15 +217,32 @@ export function BackupCenter() {
   };
 
   const handleAdd = async () => {
+    const path = formPath.trim();
+    if (!path) {
+      toast.error("请先选择项目路径");
+      return;
+    }
+    const name = formName.trim() || basenameOf(path);
+    if (!name) {
+      toast.error("请填写项目名");
+      return;
+    }
+    if (includeEntries.length === 0) {
+      toast.error("请至少选择一个同步条目");
+      return;
+    }
     try {
       await invoke("docs_add_project", {
-        name: formName.trim(),
-        repoPath: formPath.trim(),
+        name,
+        repoPath: path,
+        includeJson: JSON.stringify(includeEntries),
       });
       toast.success("项目已注册并完成首次同步");
       setShowAdd(false);
       setFormName("");
       setFormPath("");
+      setIncludeEntries(["docs/"]);
+      setCustomEntry("");
       refresh();
     } catch (e) {
       toast.error(`注册失败：${e}`);
@@ -343,31 +413,94 @@ export function BackupCenter() {
       {/* 注册对话框 */}
       {showAdd && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-[480px] rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
+          <div className="w-[560px] rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
             <h2 className="text-lg font-semibold">注册项目</h2>
             <div className="mt-4 space-y-3">
               <label className="block text-sm">
-                <span className="text-[var(--color-text-secondary)]">项目名（备份落点子目录名）</span>
+                <span className="text-[var(--color-text-secondary)]">项目路径</span>
+                <div className="mt-1 flex gap-2">
+                  <input
+                    value={formPath}
+                    onChange={(e) => setFormPath(e.target.value)}
+                    placeholder="例如 D:\github\docs-backup-manager"
+                    className="w-full rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={browsePath}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm hover:bg-[var(--color-surface-hover)]"
+                  >
+                    <FolderOpen size={14} /> 浏览
+                  </button>
+                </div>
+              </label>
+              <label className="block text-sm">
+                <span className="text-[var(--color-text-secondary)]">项目名（备份落点子目录名，留空自动取文件夹名）</span>
                 <input
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
-                  placeholder="例如 docs-backup-manager"
+                  placeholder={formPath.trim() ? basenameOf(formPath.trim()) : "例如 docs-backup-manager"}
                   className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm outline-none focus:border-blue-500"
                 />
               </label>
-              <label className="block text-sm">
-                <span className="text-[var(--color-text-secondary)]">项目路径（绝对路径）</span>
-                <input
-                  value={formPath}
-                  onChange={(e) => setFormPath(e.target.value)}
-                  placeholder="例如 D:\github\docs-backup-manager"
-                  className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm outline-none focus:border-blue-500"
-                />
-              </label>
+              <div className="text-sm">
+                <span className="text-[var(--color-text-secondary)]">同步清单（勾选常用条目，或添加自定义条目）</span>
+                <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1.5">
+                  {PRESET_ENTRIES.map((entry) => (
+                    <label key={entry} className="flex items-center gap-1.5 font-mono text-xs">
+                      <input
+                        type="checkbox"
+                        checked={includeEntries.includes(entry)}
+                        onChange={() => toggleEntry(entry)}
+                      />
+                      {entry}
+                    </label>
+                  ))}
+                </div>
+                <div className="mt-2 flex gap-2">
+                  <input
+                    value={customEntry}
+                    onChange={(e) => setCustomEntry(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addCustomEntry();
+                      }
+                    }}
+                    placeholder="自定义条目，如 src/api-specs/"
+                    className="w-full rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-1.5 text-xs outline-none focus:border-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={addCustomEntry}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-[var(--color-border)] px-2.5 py-1.5 text-xs hover:bg-[var(--color-surface-hover)]"
+                  >
+                    <Plus size={12} /> 添加
+                  </button>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {includeEntries.map((entry) => (
+                    <span
+                      key={entry}
+                      className="inline-flex items-center gap-1 rounded-full bg-[var(--color-surface-hover)] px-2 py-0.5 font-mono text-xs"
+                    >
+                      {entry}
+                      <button
+                        type="button"
+                        onClick={() => toggleEntry(entry)}
+                        className="text-[var(--color-text-secondary)] hover:text-red-500"
+                      >
+                        <X size={11} />
+                      </button>
+                    </span>
+                  ))}
+                  {includeEntries.length === 0 && (
+                    <span className="text-xs text-red-500">清单为空，请至少选择一个条目</span>
+                  )}
+                </div>
+              </div>
               <div className="rounded-lg bg-[var(--color-surface-hover)] p-3 text-xs text-[var(--color-text-secondary)]">
-                默认同步清单：docs/ · openspec/ · AGENTS.md · .codebuddy/ · .workbuddy/memory/
-                <br />
-                落点：backup/&lt;项目名&gt;/（镜像同步，目标多余文件将被删除）
+                落点：backup/&lt;项目名&gt;/（镜像同步，目标多余文件将被删除）；项目里暂不存在的条目会在同步时自动跳过。
               </div>
             </div>
             <div className="mt-5 flex justify-end gap-2">
