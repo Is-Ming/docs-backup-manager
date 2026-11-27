@@ -100,7 +100,7 @@ fn target_for_entry(project_dir: &Path, entry: &str) -> PathBuf {
     project_dir.join(name)
 }
 
-fn run_git(vault: &Path, args: &[&str]) -> Result<String> {
+pub fn run_git(vault: &Path, args: &[&str]) -> Result<String> {
     let output = Command::new("git")
         .args(args)
         .current_dir(vault)
@@ -170,6 +170,12 @@ pub fn run_batch(store: &DocsStore) -> BatchResult {
                 result.added += added;
                 result.deleted += deleted;
                 project_states.insert(project.name.clone(), (added, deleted));
+                if added + deleted > 0 {
+                    let _ = store.record_event(
+                        "sync_ok",
+                        &format!("{} 同步完成：+{}/-{}", project.name, added, deleted),
+                    );
+                }
                 let _ = store.upsert_state(&SyncStateRecord {
                     project_id: project.id,
                     last_sync: Some(now_string()),
@@ -182,6 +188,10 @@ pub fn run_batch(store: &DocsStore) -> BatchResult {
             Err(e) => {
                 result.failed += 1;
                 result.errors.push(format!("{}：{e}", project.name));
+                let _ = store.record_event(
+                    "sync_failed",
+                    &format!("{} 同步失败：{e:#}", project.name),
+                );
                 let _ = store.upsert_state(&SyncStateRecord {
                     project_id: project.id,
                     last_sync: Some(now_string()),
@@ -193,36 +203,57 @@ pub fn run_batch(store: &DocsStore) -> BatchResult {
         }
     }
 
-    // git 模式：中央目标存在 .git 时做批次 commit + push
+    // git 模式：中央目标存在 .git 时做批次 commit + push（受"自动备份"开关控制）
     let git_mode = vault.join(".git").exists();
-    if git_mode {
+    if git_mode && settings.auto_backup {
         match batch_git_backup(&vault, &settings, &projects, &project_states, &mut result) {
             Ok((committed, pushed, commit_sha)) => {
                 result.committed = committed;
                 result.pushed = pushed;
                 if committed {
-                    for project in &projects {
-                        if project_states.contains_key(&project.name) {
-                            let mut state = store
-                                .get_state(project.id)
-                                .unwrap_or_else(|_| SyncStateRecord {
-                                    project_id: project.id,
-                                    ..Default::default()
-                                });
-                            state.push_status = if pushed { Some("ok".into()) } else { Some("failed".into()) };
-                            state.last_commit = commit_sha.clone();
-                            if !pushed {
-                                state.last_error = Some("push 失败，下次同步自动补推".into());
-                            } else {
-                                state.last_error = None;
-                            }
-                            let _ = store.upsert_state(&state);
+                    let _ = store.set_backup_state(&super::docs_store::BackupState {
+                        last_backup: Some(now_string()),
+                        push_status: Some(if pushed { "pushed" } else { "local" }.into()),
+                        last_commit: commit_sha.clone(),
+                        last_error: None,
+                    });
+                    let _ = store.record_event(
+                        "backup_ok",
+                        &format!(
+                            "备份完成：commit {}，{}",
+                            commit_sha.clone().unwrap_or_default(),
+                            if pushed { "已推送远端" } else { "未配置远端，仅本地 commit" }
+                        ),
+                    );
+                }
+                for project in &projects {
+                    if project_states.contains_key(&project.name) {
+                        let mut state = store
+                            .get_state(project.id)
+                            .unwrap_or_else(|_| SyncStateRecord {
+                                project_id: project.id,
+                                ..Default::default()
+                            });
+                        state.push_status = if pushed { Some("ok".into()) } else { Some("failed".into()) };
+                        state.last_commit = commit_sha.clone();
+                        if !pushed {
+                            state.last_error = Some("push 失败，下次同步自动补推".into());
+                        } else {
+                            state.last_error = None;
                         }
+                        let _ = store.upsert_state(&state);
                     }
                 }
             }
             Err(e) => {
                 result.errors.push(format!("git 备份失败：{e:#}"));
+                let _ = store.set_backup_state(&super::docs_store::BackupState {
+                    last_backup: Some(now_string()),
+                    push_status: Some("failed".into()),
+                    last_commit: None,
+                    last_error: Some(format!("{e:#}")),
+                });
+                let _ = store.record_event("backup_failed", &format!("备份失败：{e:#}"));
             }
         }
     }
@@ -237,6 +268,132 @@ pub fn run_batch(store: &DocsStore) -> BatchResult {
 pub fn run_batch_first_time(vault: &Path, project: &ProjectRecord) -> Result<(i64, i64)> {
     std::fs::create_dir_all(vault.join("backup"))?;
     sync_one_project(vault, project)
+}
+
+/// 手动"立即备份"的结果。
+#[derive(Debug, serde::Serialize)]
+pub struct BackupOutcome {
+    pub committed: bool,
+    pub pushed: bool,
+    pub sha: Option<String>,
+}
+
+/// 手动"立即备份"：不经同步，直接把备份仓当前内容 commit + push。
+/// 返回 (是否产生了新 commit, 是否已推送, commit sha)。
+pub fn run_backup_now(store: &DocsStore) -> Result<(bool, bool, Option<String>)> {
+    let settings = store.get_backup_settings()?;
+    let vault = PathBuf::from(&settings.vault_path);
+    if !vault.join(".git").exists() {
+        anyhow::bail!("备份目录不是 git 仓库：请先在备份页保存远端地址（会自动初始化）");
+    }
+    run_git(&vault, &["add", "-A"])?;
+    let diff = Command::new("git")
+        .args(["diff", "--cached", "--quiet"])
+        .current_dir(&vault)
+        .output()?;
+    let mut committed = false;
+    let mut sha: Option<String> = None;
+    if diff.status.code() != Some(0) {
+        let message = format!("backup: all-projects {} (manual)", now_string_short());
+        run_git(&vault, &["commit", "-m", &message])?;
+        sha = run_git(&vault, &["rev-parse", "--short", "HEAD"])
+            .ok()
+            .map(|s| s.trim().to_string());
+        committed = true;
+    } else {
+        sha = run_git(&vault, &["rev-parse", "--short", "HEAD"])
+            .ok()
+            .map(|s| s.trim().to_string());
+    }
+    // 配置了远端就推送（含无新 commit 时补推上次未推送的提交）
+    let mut pushed = false;
+    let mut push_err: Option<String> = None;
+    if settings.remote.is_some() {
+        match run_git(&vault, &["push", "origin", &settings.branch]) {
+            Ok(_) => pushed = true,
+            Err(e) => push_err = Some(format!("{e:#}")),
+        }
+    }
+    let _ = store.set_backup_state(&super::docs_store::BackupState {
+        last_backup: Some(now_string()),
+        push_status: Some(
+            if pushed {
+                "pushed"
+            } else if settings.remote.is_none() {
+                "local"
+            } else {
+                "failed"
+            }
+            .into(),
+        ),
+        last_commit: sha.clone(),
+        last_error: push_err,
+    });
+    if committed {
+        let _ = store.record_event(
+            "backup_ok",
+            &format!(
+                "手动备份完成：commit {}，{}",
+                sha.clone().unwrap_or_default(),
+                if pushed { "已推送远端" } else { "未推送" }
+            ),
+        );
+    } else if pushed {
+        let _ = store.record_event("backup_ok", "备份仓无新变更，已补推远端");
+    }
+    Ok((committed, pushed, sha))
+}
+
+/// 保存远端时确保备份目录是 git 仓库：没有则初始化（main 分支）并提交首个版本，
+/// 然后写入/更新 origin 远端。远端为空则只保证仓库存在。
+pub fn ensure_git_repo(vault: &Path, remote: Option<&str>) -> Result<()> {
+    std::fs::create_dir_all(vault)?;
+    if !vault.join(".git").exists() {
+        if run_git(vault, &["init", "-b", "main"]).is_err() {
+            run_git(vault, &["init"])?;
+        }
+        run_git(vault, &["add", "-A"]).ok();
+        let staged = Command::new("git")
+            .args(["diff", "--cached", "--quiet"])
+            .current_dir(vault)
+            .output();
+        if staged.map(|o| o.status.code() != Some(0)).unwrap_or(false) {
+            run_git(vault, &["commit", "-m", "backup: init"])?;
+        }
+    }
+    if let Some(r) = remote {
+        if !r.trim().is_empty() {
+            let has_origin = run_git(vault, &["remote"])
+                .map(|s| s.lines().any(|l| l.trim() == "origin"))
+                .unwrap_or(false);
+            if has_origin {
+                run_git(vault, &["remote", "set-url", "origin", r])?;
+            } else {
+                run_git(vault, &["remote", "add", "origin", r])?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// 把某个备份版本的内容导出到目标目录（副本恢复：不动备份仓当前状态，
+/// 之后的同步轮次也不受影响），用于找回被删除/误改的文档。
+pub fn restore_version(vault: &Path, sha: &str, target: &Path) -> Result<()> {
+    if !vault.join(".git").exists() {
+        anyhow::bail!("备份目录不是 git 仓库");
+    }
+    let repo = git2::Repository::open(vault).map_err(|e| anyhow!("打开备份仓失败：{e}"))?;
+    let obj = repo
+        .revparse_single(sha)
+        .map_err(|e| anyhow!("找不到版本 {sha}：{e}"))?;
+    obj.peel_to_commit()
+        .map_err(|e| anyhow!("{sha} 不是备份版本：{e}"))?;
+    std::fs::create_dir_all(target)?;
+    let mut opts = git2::build::CheckoutBuilder::new();
+    opts.force().target_dir(target);
+    repo.checkout_tree(&obj, Some(&mut opts))
+        .map_err(|e| anyhow!("导出版本失败：{e}"))?;
+    Ok(())
 }
 
 fn sync_one_project(vault: &Path, project: &ProjectRecord) -> Result<(i64, i64)> {

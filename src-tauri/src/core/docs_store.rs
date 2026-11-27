@@ -61,8 +61,30 @@ pub struct BackupSettings {
     pub vault_path: String,
     pub remote: Option<String>,
     pub branch: String,
+    /// 自动同步（项目目录 → 备份目录）
     pub auto_mode: bool,
+    /// 自动备份（备份目录 → 远端 git），与自动同步相互独立
+    pub auto_backup: bool,
     pub interval_minutes: i64,
+}
+
+/// 备份仓级状态：整个备份仓 → 远端 git 的批次操作结果（全项目共享）。
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct BackupState {
+    pub last_backup: Option<String>,
+    /// pushed / local（未配置远端，仅 commit）/ failed
+    pub push_status: Option<String>,
+    pub last_commit: Option<String>,
+    pub last_error: Option<String>,
+}
+
+/// 近期动态事件（首页时间线用，本地保留最近 50 条）。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct EventRecord {
+    pub ts: String,
+    /// sync_ok / sync_failed / backup_ok / backup_failed / project_added / project_enabled / project_disabled
+    pub kind: String,
+    pub message: String,
 }
 
 pub struct DocsStore {
@@ -105,6 +127,12 @@ impl DocsStore {
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+                kind TEXT NOT NULL,
+                message TEXT NOT NULL
+            );
             "#,
         )?;
         Ok(Self {
@@ -146,6 +174,10 @@ impl DocsStore {
             .get_setting("auto_mode")?
             .map(|v| v == "on" || v == "true")
             .unwrap_or(true);
+        let auto_backup = self
+            .get_setting("auto_backup")?
+            .map(|v| v == "on" || v == "true")
+            .unwrap_or(true);
         let interval_minutes: i64 = self
             .get_setting("interval_minutes")?
             .and_then(|v| v.parse().ok())
@@ -156,6 +188,7 @@ impl DocsStore {
             remote,
             branch,
             auto_mode,
+            auto_backup,
             interval_minutes,
         })
     }
@@ -166,6 +199,7 @@ impl DocsStore {
         remote: Option<&str>,
         branch: Option<&str>,
         auto_mode: Option<bool>,
+        auto_backup: Option<bool>,
         interval_minutes: Option<i64>,
     ) -> Result<()> {
         if let Some(v) = vault_path {
@@ -182,12 +216,74 @@ impl DocsStore {
         if let Some(a) = auto_mode {
             self.set_setting("auto_mode", if a { "on" } else { "off" })?;
         }
+        if let Some(a) = auto_backup {
+            self.set_setting("auto_backup", if a { "on" } else { "off" })?;
+        }
         if let Some(m) = interval_minutes {
             if m >= 1 {
                 self.set_setting("interval_minutes", &m.to_string())?;
             }
         }
         Ok(())
+    }
+
+    // ---------- 备份仓级状态（settings 键值存取） ----------
+
+    pub fn get_backup_state(&self) -> Result<BackupState> {
+        Ok(BackupState {
+            last_backup: self.get_setting("bk_last_backup")?,
+            push_status: self.get_setting("bk_push_status")?,
+            last_commit: self.get_setting("bk_last_commit")?,
+            last_error: self.get_setting("bk_last_error")?,
+        })
+    }
+
+    pub fn set_backup_state(&self, state: &BackupState) -> Result<()> {
+        if let Some(v) = &state.last_backup {
+            self.set_setting("bk_last_backup", v)?;
+        }
+        if let Some(v) = &state.push_status {
+            self.set_setting("bk_push_status", v)?;
+        }
+        match &state.last_commit {
+            Some(v) => self.set_setting("bk_last_commit", v)?,
+            None => self.set_setting("bk_last_commit", "")?,
+        }
+        match &state.last_error {
+            Some(v) => self.set_setting("bk_last_error", v)?,
+            None => self.set_setting("bk_last_error", "")?,
+        }
+        Ok(())
+    }
+
+    // ---------- 近期动态 ----------
+
+    pub fn record_event(&self, kind: &str, message: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO events (kind, message) VALUES (?1, ?2)",
+            params![kind, message],
+        )?;
+        // 只保留最近 50 条
+        conn.execute(
+            "DELETE FROM events WHERE id NOT IN (SELECT id FROM events ORDER BY id DESC LIMIT 50)",
+            [],
+        )?;
+        Ok(())
+    }
+
+    pub fn recent_events(&self, limit: i64) -> Result<Vec<EventRecord>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn
+            .prepare("SELECT ts, kind, message FROM events ORDER BY id DESC LIMIT ?1")?;
+        let rows = stmt.query_map(params![limit], |row| {
+            Ok(EventRecord {
+                ts: row.get(0)?,
+                kind: row.get(1)?,
+                message: row.get(2)?,
+            })
+        })?;
+        Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
     }
 
     // ---------- projects ----------

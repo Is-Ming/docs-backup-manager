@@ -5,6 +5,8 @@ import { ThemeProvider, useThemeContext } from "./context/ThemeContext";
 import { CloseActionGuard } from "./components/CloseActionGuard";
 import { Layout } from "./components/Layout";
 import { BackupCenter } from "./views/BackupCenter";
+import { HomeView } from "./views/HomeView";
+import { BackupView } from "./views/BackupView";
 import { Settings } from "./views/Settings";
 
 function ThemedToaster() {
@@ -31,7 +33,9 @@ function App() {
         <BrowserRouter>
           <Routes>
             <Route element={<Layout />}>
-              <Route path="/" element={<BackupCenter />} />
+              <Route path="/" element={<HomeView />} />
+              <Route path="/center" element={<BackupCenter />} />
+              <Route path="/backup" element={<BackupView />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>

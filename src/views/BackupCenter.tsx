@@ -1,22 +1,23 @@
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { toast } from "sonner";
 import {
-  CloudUpload,
+  Archive,
   FolderOpen,
+  MoreHorizontal,
   Plus,
-  Trash2,
-  Power,
+  RefreshCw,
   Settings2,
-  Loader2,
   CheckCircle2,
   XCircle,
   Clock,
   X,
 } from "lucide-react";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { ToggleSwitch } from "../components/ToggleSwitch";
 
 interface ProjectRecord {
   id: number;
@@ -79,15 +80,21 @@ const emptySettings: BackupSettings = {
 };
 
 export function BackupCenter() {
+  const navigate = useNavigate();
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [states, setStates] = useState<Record<number, SyncStateRecord>>({});
   const [settings, setSettings] = useState<BackupSettings>(emptySettings);
   const [syncing, setSyncing] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [showRemove, setShowRemove] = useState<ProjectRecord | null>(null);
-  const [showSettings, setShowSettings] = useState(false);
   const [previewRows, setPreviewRows] = useState<PreviewRow[]>([]);
   const [showPreview, setShowPreview] = useState(false);
+  const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
+  const [bk, setBk] = useState<{
+    remote: string | null;
+    last_backup: string | null;
+    push_status: string | null;
+  } | null>(null);
 
   // 注册表单
   const [formName, setFormName] = useState("");
@@ -114,12 +121,6 @@ export function BackupCenter() {
     setCustomEntry("");
   };
 
-  // 设置表单
-  const [formVault, setFormVault] = useState("");
-  const [formRemote, setFormRemote] = useState("");
-  const [formAuto, setFormAuto] = useState(true);
-  const [formInterval, setFormInterval] = useState(60);
-
   const refresh = useCallback(async () => {
     try {
       const list = await invoke<ProjectRecord[]>("docs_list_projects");
@@ -129,6 +130,13 @@ export function BackupCenter() {
         map[p.id] = await invoke<SyncStateRecord>("docs_get_state", { projectId: p.id });
       }
       setStates(map);
+      setBk(
+        await invoke("docs_get_backup_status") as {
+          remote: string | null;
+          last_backup: string | null;
+          push_status: string | null;
+        }
+      );
     } catch (e) {
       toast.error(`加载项目失败：${e}`);
     }
@@ -136,13 +144,7 @@ export function BackupCenter() {
 
   useEffect(() => {
     refresh();
-    invoke<BackupSettings>("docs_get_settings").then((s) => {
-      setSettings(s);
-      setFormVault(s.vault_path);
-      setFormRemote(s.remote ?? "");
-      setFormAuto(s.auto_mode);
-      setFormInterval(s.interval_minutes);
-    });
+    invoke<BackupSettings>("docs_get_settings").then(setSettings);
     const unlisten = listen("docs-sync-done", () => refresh());
     return () => {
       unlisten.then((fn) => fn());
@@ -245,7 +247,18 @@ export function BackupCenter() {
       setCustomEntry("");
       refresh();
     } catch (e) {
-      toast.error(`注册失败：${e}`);
+      toast.error(`导入失败：${e}`);
+    }
+  };
+
+  const handleSyncOne = async (p: ProjectRecord) => {
+    try {
+      const [added, deleted] = await invoke<[number, number]>("docs_sync_one", { id: p.id });
+      toast.success(`${p.name} 同步完成：+${added}/-${deleted}`);
+      refresh();
+    } catch (e) {
+      toast.error(`${p.name} 同步失败：${e}`);
+      refresh();
     }
   };
 
@@ -270,54 +283,23 @@ export function BackupCenter() {
     }
   };
 
-  const handleSaveSettings = async () => {
-    try {
-      await invoke("docs_set_settings", {
-        vaultPath: formVault.trim() || undefined,
-        remote: formRemote.trim() || null,
-        autoMode: formAuto,
-        intervalMinutes: formInterval,
-      });
-      const s = await invoke<BackupSettings>("docs_get_settings");
-      setSettings(s);
-      setShowSettings(false);
-      toast.success("设置已保存");
-    } catch (e) {
-      toast.error(`保存失败：${e}`);
-    }
-  };
-
-  const statusBadge = (p: ProjectRecord) => {
-    const st = states[p.id];
-    if (!st || !st.push_status) return null;
-    if (st.push_status === "failed") {
-      return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-xs text-red-500">
-          <XCircle size={12} /> 失败
-        </span>
-      );
-    }
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-500">
-        <CheckCircle2 size={12} /> 正常
-      </span>
-    );
-  };
-
   return (
-    <div className="flex h-full flex-col gap-6 overflow-y-auto p-6">
+    <div
+      className="flex h-full flex-col gap-6 overflow-y-auto p-6"
+      onClick={() => setMenuOpenId(null)}
+    >
       {/* 页头 */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">文档备份中心</h1>
+          <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">备份中心</h1>
           <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
             备份目标：{settings.vault_path || "未配置"}
-            {settings.remote ? ` · 远端 ${settings.remote}` : " · 纯本地备份"}
+            {bk?.remote ? ` · 远端已配置` : " · 未配置远端（本地文件夹）"}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setShowSettings(true)}
+            onClick={() => navigate("/settings")}
             className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm hover:bg-[var(--color-surface-hover)]"
           >
             <Settings2 size={15} /> 设置
@@ -325,85 +307,166 @@ export function BackupCenter() {
           <button
             onClick={handleSyncNow}
             disabled={syncing}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-500 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--color-accent-dark)] px-3 py-2 text-sm text-white hover:bg-[var(--color-accent)] disabled:opacity-50"
           >
-            {syncing ? <Loader2 size={15} className="animate-spin" /> : <CloudUpload size={15} />}
+            <RefreshCw size={15} className={syncing ? "animate-spin" : ""} />
             {syncing ? "同步中…" : "立即同步"}
           </button>
           <button
             onClick={() => setShowAdd(true)}
             className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm hover:bg-[var(--color-surface-hover)]"
           >
-            <Plus size={15} /> 注册项目
+            <Plus size={15} /> 导入项目
           </button>
         </div>
       </div>
 
-      {/* 调度状态条 */}
-      <div className="flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2 text-sm text-[var(--color-text-secondary)]">
-        <Clock size={14} />
-        自动备份：{settings.auto_mode ? "开启" : "关闭"} · 间隔 {settings.interval_minutes} 分钟
+      {/* 状态条：同步（每项目）与备份（整个备份仓 → 远端）分开展示 */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2 text-sm text-[var(--color-text-secondary)]">
+        <span className="flex items-center gap-2">
+          <Clock size={14} />
+          自动同步：{settings.auto_mode ? "开启" : "关闭"} · 间隔 {settings.interval_minutes} 分钟
+        </span>
+        <span className="text-xs text-[var(--color-text-muted)]">
+          📦 备份（整个备份仓 → 远端 git，全项目同一备份时间）：
+          {bk?.remote
+            ? `上次备份 ${bk.last_backup ?? "—"} · ${
+                bk.push_status === "pushed"
+                  ? "已推送"
+                  : bk.push_status === "failed"
+                    ? "推送失败"
+                    : "仅本地 commit"
+              }`
+            : "未配置远端，无此步骤（到\"备份\"页配置）"}
+        </span>
       </div>
 
-      {/* 项目卡片 */}
+      {/* 项目卡片（对齐 skills-manager skill 卡片） */}
       {projects.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-[var(--color-border)] py-16 text-[var(--color-text-secondary)]">
-          <CloudUpload size={36} className="opacity-40" />
-          <p>还没有注册任何项目</p>
+          <Archive size={36} className="opacity-40" />
+          <p>还没有导入任何项目</p>
           <button
             onClick={() => setShowAdd(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-500"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--color-accent-dark)] px-3 py-2 text-sm text-white hover:bg-[var(--color-accent)]"
           >
-            <Plus size={15} /> 注册第一个项目
+            <Plus size={15} /> 导入第一个项目
           </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {projects.map((p) => {
             const st = states[p.id];
+            const failed = st?.push_status === "failed";
             return (
               <div
                 key={p.id}
-                className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+                className="group relative flex flex-col rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] shadow-[var(--shadow-card)] transition-all hover:-translate-y-px hover:border-[var(--color-border)] hover:shadow-[var(--shadow-card-hover)]"
               >
-                <div className="flex items-start justify-between">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="truncate font-medium text-[var(--color-text-primary)]">{p.name}</h3>
-                      {statusBadge(p)}
-                    </div>
-                    <p className="mt-1 truncate text-xs text-[var(--color-text-secondary)]">{p.repo_path}</p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
+                {/* 头部：启用圆点 + 名称 + "…"菜单 + 开关 */}
+                <div className="flex items-center gap-2.5 px-3.5 pb-1.5 pt-3">
+                  <span
+                    title={p.enabled ? "已启用" : "已停用"}
+                    className={`h-2 w-2 shrink-0 rounded-full ${
+                      p.enabled
+                        ? "bg-[var(--color-accent-light)] shadow-[0_0_0_3px_var(--color-accent-bg)]"
+                        : "bg-[var(--color-surface-active)]"
+                    }`}
+                  />
+                  <h3
+                    className="min-w-0 flex-1 truncate text-[14px] font-semibold text-[var(--color-text-primary)] group-hover:text-[var(--color-accent-light)]"
+                    title={p.name}
+                  >
+                    {p.name}
+                  </h3>
+                  <div className="relative shrink-0 opacity-0 transition-opacity group-hover:opacity-100">
                     <button
-                      onClick={() => handleToggle(p)}
-                      title={p.enabled ? "停用" : "启用"}
-                      className="rounded-md p-1.5 hover:bg-[var(--color-surface-hover)]"
+                      title="更多操作"
+                      aria-label="更多操作"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMenuOpenId(menuOpenId === p.id ? null : p.id);
+                      }}
+                      className="flex h-5 w-5 items-center justify-center rounded-md text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-secondary)]"
                     >
-                      <Power size={14} className={p.enabled ? "text-emerald-500" : "text-[var(--color-text-secondary)]"} />
+                      <MoreHorizontal size={14} />
                     </button>
-                    <button
-                      onClick={() => setShowRemove(p)}
-                      title="移除"
-                      className="rounded-md p-1.5 hover:bg-[var(--color-surface-hover)]"
-                    >
-                      <Trash2 size={14} className="text-red-400" />
-                    </button>
+                    {menuOpenId === p.id && (
+                      <div className="absolute right-0 top-full z-30 mt-1 min-w-[176px] rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-1 shadow-lg">
+                        {p.enabled && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMenuOpenId(null);
+                              handleSyncOne(p);
+                            }}
+                            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]"
+                          >
+                            <RefreshCw size={13} className="opacity-70" /> 立即同步此项目
+                          </button>
+                        )}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenuOpenId(null);
+                            setShowRemove(p);
+                          }}
+                          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-[var(--color-danger)] hover:bg-[var(--color-danger-bg)]"
+                        >
+                          <X size={13} className="opacity-70" /> 移除（快照保留）
+                        </button>
+                      </div>
+                    )}
                   </div>
+                  <ToggleSwitch
+                    checked={p.enabled}
+                    onChange={() => handleToggle(p)}
+                    title={p.enabled ? "停用：暂停此项目的自动同步" : "启用：恢复此项目的自动同步"}
+                  />
                 </div>
-                <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-[var(--color-text-secondary)]">
-                  <span>上次同步：{st?.last_sync ?? "—"}</span>
-                  <span>
-                    变更：{st ? `+${st.added}/-${st.deleted}` : "—"}
-                  </span>
-                  <span>commit：{st?.last_commit ?? "—"}</span>
-                  <span>push：{st?.push_status ?? "—"}</span>
-                </div>
-                {st?.last_error && (
-                  <p className="mt-2 line-clamp-2 rounded-md bg-red-500/10 px-2 py-1 text-xs text-red-500">
-                    {st.last_error}
+                {/* 主体：路径 + 清单 + 错误 */}
+                <div className="px-3.5 pb-3">
+                  <p className="truncate text-[12px] text-[var(--color-text-muted)]" title={p.repo_path}>
+                    {p.repo_path}
                   </p>
-                )}
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {((): string[] => {
+                      try {
+                        return JSON.parse(p.include_json) as string[];
+                      } catch {
+                        return [];
+                      }
+                    })().map((c) => (
+                      <span
+                        key={c}
+                        className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface-hover)] px-2 py-0.5 font-mono text-[11px] text-[var(--color-text-tertiary)]"
+                      >
+                        {c}
+                      </span>
+                    ))}
+                  </div>
+                  {st?.last_error && (
+                    <p className="mt-2 line-clamp-2 rounded-md bg-red-500/10 px-2 py-1 text-xs text-red-500">
+                      {st.last_error}
+                    </p>
+                  )}
+                </div>
+                {/* 页脚 */}
+                <div className="mt-auto flex items-center justify-between gap-2 border-t border-[var(--color-border-faint)] px-3.5 py-2.5">
+                  <span className="min-w-0 truncate text-[12px] text-[var(--color-text-muted)]">
+                    上次同步：{st?.last_sync ?? "—"} · 变更：
+                    {st ? `+${st.added}/-${st.deleted}` : "—"}
+                  </span>
+                  {failed ? (
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-xs text-red-500">
+                      <XCircle size={12} /> 失败
+                    </span>
+                  ) : (
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--color-accent-border)] bg-[var(--color-accent-bg)] px-2 py-0.5 text-xs text-[var(--color-accent)]">
+                      <CheckCircle2 size={12} /> 正常
+                    </span>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -414,7 +477,7 @@ export function BackupCenter() {
       {showAdd && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="w-[560px] rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
-            <h2 className="text-lg font-semibold">注册项目</h2>
+            <h2 className="text-lg font-semibold">导入项目</h2>
             <div className="mt-4 space-y-3">
               <label className="block text-sm">
                 <span className="text-[var(--color-text-secondary)]">项目路径</span>
@@ -510,8 +573,8 @@ export function BackupCenter() {
               >
                 <FolderOpen size={14} /> 预览同步映射
               </button>
-              <button onClick={handleAdd} className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-500">
-                确认注册并首次同步
+              <button onClick={handleAdd} className="rounded-lg bg-[var(--color-accent-dark)] px-4 py-2 text-sm text-white hover:bg-[var(--color-accent)]">
+                确认导入并首次同步
               </button>
               <button
                 onClick={() => setShowAdd(false)}
@@ -553,68 +616,6 @@ export function BackupCenter() {
                 className="rounded-lg px-4 py-2 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]"
               >
                 关闭
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 设置对话框 */}
-      {showSettings && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-[480px] rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
-            <h2 className="text-lg font-semibold">备份设置</h2>
-            <div className="mt-4 space-y-3">
-              <label className="block text-sm">
-                <span className="text-[var(--color-text-secondary)]">备份目标目录（本地文件夹或 git 仓）</span>
-                <input
-                  value={formVault}
-                  onChange={(e) => setFormVault(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm outline-none focus:border-blue-500"
-                />
-              </label>
-              <label className="block text-sm">
-                <span className="text-[var(--color-text-secondary)]">git 远端（可空 = 纯本地备份）</span>
-                <input
-                  value={formRemote}
-                  onChange={(e) => setFormRemote(e.target.value)}
-                  placeholder="git@github.com:Is-Ming/docs-vault.git"
-                  className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm outline-none focus:border-blue-500"
-                />
-              </label>
-              <div className="flex items-center gap-4">
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={formAuto}
-                    onChange={(e) => setFormAuto(e.target.checked)}
-                  />
-                  自动备份
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  间隔（分钟）
-                  <input
-                    type="number"
-                    min={1}
-                    value={formInterval}
-                    onChange={(e) => setFormInterval(Number(e.target.value) || 60)}
-                    className="w-20 rounded-lg border border-[var(--color-border)] bg-transparent px-2 py-1 text-sm outline-none focus:border-blue-500"
-                  />
-                </label>
-              </div>
-            </div>
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                onClick={handleSaveSettings}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-500"
-              >
-                保存
-              </button>
-              <button
-                onClick={() => setShowSettings(false)}
-                className="rounded-lg px-3 py-2 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]"
-              >
-                取消
               </button>
             </div>
           </div>
