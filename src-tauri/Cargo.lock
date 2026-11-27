@@ -1221,6 +1221,7 @@ dependencies = [
  "clap",
  "dirs 5.0.1",
  "dunce",
+ "encoding_rs",
  "fs2",
  "gethostname",
  "git2",

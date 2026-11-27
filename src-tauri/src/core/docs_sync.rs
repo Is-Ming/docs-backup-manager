@@ -17,39 +17,55 @@ fn robocopy_ok(code: Option<i32>) -> bool {
     matches!(code, Some(c) if (0..=7).contains(&c))
 }
 
-/// 解析 robocopy 摘要行（"Files:" 与 "Dirs:" 行），列依次为
-/// Total / Copied / Skipped / Mismatch / FAILED / Extras。
-fn parse_summary(output: &str) -> (i64, i64) {
-    let mut copied_files = 0i64;
-    let mut extras_files = 0i64;
-    for line in output.lines() {
-        let trimmed = line.trim();
-        let numbers: Vec<i64> = trimmed
-            .split(|c: char| !c.is_ascii_digit() && c != '-')
-            .filter(|s| !s.is_empty() && s.parse::<i64>().is_ok())
-            .filter_map(|s| s.parse().ok())
-            .collect();
-        if numbers.len() < 6 {
-            continue;
-        }
-        // 复制的文件数 = Files 行的 Copied 列；/MIR 下被删除的文件计入 Extras 列
-        if trimmed.starts_with("Files:") || trimmed.starts_with("Files :") {
-            copied_files = numbers[1];
-            extras_files = numbers[5];
-        }
+/// 解码子进程输出：优先 UTF-8，失败则按中文 Windows 的 OEM 代码页（GBK）。
+/// robocopy 输出随系统语言与代码页变化，文本只用于错误信息展示。
+fn decode_output(bytes: &[u8]) -> String {
+    match std::str::from_utf8(bytes) {
+        Ok(s) => s.to_string(),
+        Err(_) => encoding_rs::GBK.decode(bytes).0.into_owned(),
     }
-    (copied_files, extras_files)
 }
 
-/// 同步单个项目到中央目标。返回（复制数、删除数）。
+/// 递归收集目录下全部文件的 相对路径 -> (大小, 修改秒级时间戳)。
+fn collect_files(dir: &Path, base: &Path, out: &mut HashMap<String, (u64, i64)>) {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for e in rd.flatten() {
+        let p = e.path();
+        if p.is_dir() {
+            collect_files(&p, base, out);
+        } else if let Ok(meta) = e.metadata() {
+            let rel = p
+                .strip_prefix(base)
+                .map(|r| r.to_string_lossy().replace('\\', "/"))
+                .unwrap_or_default();
+            let mtime = meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            out.insert(rel, (meta.len(), mtime));
+        }
+    }
+}
+
+/// 同步单个项目条目到中央目标。返回（新增/修改的文件数、删除的文件数）。
+/// 增删统计通过同步前后对目标目录的文件快照对比得出——robocopy 的摘要
+/// 表头随系统语言变化，解析文本不可靠。
 fn robocopy_mirror(src: &Path, dst: &Path) -> Result<(i64, i64)> {
+    let mut before = HashMap::new();
+    collect_files(dst, dst, &mut before);
+
+    // /MIR 镜像（目标多余文件将被删除）；/R:1 /W:1 重试；/NFL /NDL /NP 精简输出
     let output = Command::new("robocopy")
         .arg(src)
         .arg(dst)
-        .args(["/MIR", "/R:1", "/W:1", "/NFL", "/NDL", "/NP", "/UTF8"])
+        .args(["/MIR", "/R:1", "/W:1", "/NFL", "/NDL", "/NP"])
         .output()
         .map_err(|e| anyhow!("robocopy 启动失败：{e}"))?;
-    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let stdout = decode_output(&output.stdout);
     if !robocopy_ok(output.status.code()) {
         return Err(anyhow!(
             "robocopy 失败（exit {}）：{}",
@@ -57,7 +73,20 @@ fn robocopy_mirror(src: &Path, dst: &Path) -> Result<(i64, i64)> {
             stdout.lines().rev().take(15).collect::<Vec<_>>().join("\n")
         ));
     }
-    Ok(parse_summary(&stdout))
+
+    let mut after = HashMap::new();
+    collect_files(dst, dst, &mut after);
+
+    let mut added = 0i64;
+    for (rel, meta) in &after {
+        match before.get(rel) {
+            None => added += 1,
+            Some(old) if old != meta => added += 1, // 内容/大小/时间变化 = 重新复制
+            _ => {}
+        }
+    }
+    let deleted = before.keys().filter(|k| !after.contains_key(*k)).count() as i64;
+    Ok((added, deleted))
 }
 
 /// 单个 include 条目的落点：目录镜像到 `<vault>/backup/<项目>/<同名目录>`；
