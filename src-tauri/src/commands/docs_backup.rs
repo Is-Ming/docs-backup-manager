@@ -111,6 +111,18 @@ pub fn docs_get_state(
     store.get_state(project_id).map_err(|e| e.to_string())
 }
 
+/// 更新项目同步清单（详情页编辑用）。
+#[tauri::command]
+pub fn docs_set_project_include(
+    store: State<'_, Arc<DocsStore>>,
+    id: i64,
+    include_json: String,
+) -> Result<(), String> {
+    store
+        .set_project_include(id, &include_json)
+        .map_err(|e| e.to_string())
+}
+
 /// 仅同步单个项目（不动其他项目）。
 #[tauri::command]
 pub fn docs_sync_one(

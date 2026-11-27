@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import {
   Archive,
   FolderOpen,
+  Info,
   MoreHorizontal,
   Plus,
   RefreshCw,
@@ -90,6 +91,9 @@ export function BackupCenter() {
   const [previewRows, setPreviewRows] = useState<PreviewRow[]>([]);
   const [showPreview, setShowPreview] = useState(false);
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
+  const [showDetail, setShowDetail] = useState<ProjectRecord | null>(null);
+  const [detailEntries, setDetailEntries] = useState<string[]>([]);
+  const [detailCustom, setDetailCustom] = useState("");
   const [bk, setBk] = useState<{
     remote: string | null;
     last_backup: string | null;
@@ -262,6 +266,53 @@ export function BackupCenter() {
     }
   };
 
+  const openDetail = (p: ProjectRecord) => {
+    setMenuOpenId(null);
+    try {
+      setDetailEntries(JSON.parse(p.include_json) as string[]);
+    } catch {
+      setDetailEntries([]);
+    }
+    setDetailCustom("");
+    setShowDetail(p);
+  };
+
+  const toggleDetailEntry = (entry: string) => {
+    setDetailEntries((prev) =>
+      prev.includes(entry) ? prev.filter((e) => e !== entry) : [...prev, entry]
+    );
+  };
+
+  const addDetailCustom = () => {
+    const entry = detailCustom.trim().replace(/\\/g, "/");
+    if (!entry || detailEntries.includes(entry)) {
+      setDetailCustom("");
+      return;
+    }
+    setDetailEntries((prev) => [...prev, entry]);
+    setDetailCustom("");
+  };
+
+  const applyDetail = async () => {
+    if (!showDetail) return;
+    if (detailEntries.length === 0) {
+      toast.error("请至少选择一个同步条目");
+      return;
+    }
+    try {
+      await invoke("docs_set_project_include", {
+        id: showDetail.id,
+        includeJson: JSON.stringify(detailEntries),
+      });
+      await invoke("docs_sync_one", { id: showDetail.id });
+      toast.success("清单已更新并完成同步");
+      setShowDetail(null);
+      refresh();
+    } catch (e) {
+      toast.error(`操作失败：${e}`);
+    }
+  };
+
   const handleRemove = async () => {
     if (!showRemove) return;
     try {
@@ -361,7 +412,8 @@ export function BackupCenter() {
             return (
               <div
                 key={p.id}
-                className="group relative flex flex-col rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] shadow-[var(--shadow-card)] transition-all hover:-translate-y-px hover:border-[var(--color-border)] hover:shadow-[var(--shadow-card-hover)]"
+                onClick={() => openDetail(p)}
+                className="group relative cursor-pointer flex flex-col rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] shadow-[var(--shadow-card)] transition-all hover:-translate-y-px hover:border-[var(--color-border)] hover:shadow-[var(--shadow-card-hover)]"
               >
                 {/* 头部：启用圆点 + 名称 + "…"菜单 + 开关 */}
                 <div className="flex items-center gap-2.5 px-3.5 pb-1.5 pt-3">
@@ -405,6 +457,15 @@ export function BackupCenter() {
                             <RefreshCw size={13} className="opacity-70" /> 立即同步此项目
                           </button>
                         )}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openDetail(p);
+                          }}
+                          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]"
+                        >
+                          <Info size={13} className="opacity-70" /> 查看详情
+                        </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -616,6 +677,124 @@ export function BackupCenter() {
                 className="rounded-lg px-4 py-2 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]"
               >
                 关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 项目详情对话框 */}
+      {showDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-[560px] rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
+            <h2 className="text-lg font-semibold">
+              {showDetail.name}
+              <span
+                className={`ml-2 inline-flex items-center rounded-full px-2 py-0.5 align-middle text-xs ${
+                  showDetail.enabled
+                    ? "border border-[var(--color-accent-border)] bg-[var(--color-accent-bg)] text-[var(--color-accent)]"
+                    : "border border-[var(--color-border)] text-[var(--color-text-muted)]"
+                }`}
+              >
+                {showDetail.enabled ? "已启用" : "已停用"}
+              </span>
+            </h2>
+            {(() => {
+              const st = states[showDetail.id];
+              return (
+                <div className="mt-3 grid grid-cols-[96px_1fr] gap-x-4 gap-y-1.5 text-[13px]">
+                  <span className="text-[var(--color-text-muted)]">项目路径</span>
+                  <span className="truncate font-mono text-[12px] text-[var(--color-text-secondary)]" title={showDetail.repo_path}>
+                    {showDetail.repo_path}
+                  </span>
+                  <span className="text-[var(--color-text-muted)]">上次同步</span>
+                  <span className="text-[var(--color-text-secondary)]">{st?.last_sync ?? "—"}</span>
+                  <span className="text-[var(--color-text-muted)]">本轮变更</span>
+                  <span className="text-[var(--color-text-secondary)]">
+                    {st ? `+${st.added} / -${st.deleted}` : "—"}
+                  </span>
+                  <span className="text-[var(--color-text-muted)]">落点</span>
+                  <span className="truncate font-mono text-[12px] text-[var(--color-text-muted)]">
+                    backup/{showDetail.name}/
+                  </span>
+                </div>
+              );
+            })()}
+            {states[showDetail.id]?.last_error && (
+              <p className="mt-2 rounded-md bg-red-500/10 px-2 py-1 text-xs text-red-500">
+                {states[showDetail.id]!.last_error}
+              </p>
+            )}
+            <div className="mt-4 text-sm">
+              <span className="text-[var(--color-text-secondary)]">
+                同步清单（可编辑，应用后自动同步一次）
+              </span>
+              <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1.5">
+                {PRESET_ENTRIES.map((entry) => (
+                  <label key={entry} className="flex items-center gap-1.5 font-mono text-xs">
+                    <input
+                      type="checkbox"
+                      checked={detailEntries.includes(entry)}
+                      onChange={() => toggleDetailEntry(entry)}
+                    />
+                    {entry}
+                  </label>
+                ))}
+              </div>
+              <div className="mt-2 flex gap-2">
+                <input
+                  value={detailCustom}
+                  onChange={(e) => setDetailCustom(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addDetailCustom();
+                    }
+                  }}
+                  placeholder="自定义条目，如 src/api-specs/"
+                  className="w-full rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-1.5 text-xs outline-none focus:border-[var(--color-accent)]"
+                />
+                <button
+                  type="button"
+                  onClick={addDetailCustom}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-[var(--color-border)] px-2.5 py-1.5 text-xs hover:bg-[var(--color-surface-hover)]"
+                >
+                  <Plus size={12} /> 添加
+                </button>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {detailEntries.map((entry) => (
+                  <span
+                    key={entry}
+                    className="inline-flex items-center gap-1 rounded-full border border-[var(--color-accent-border)] bg-[var(--color-accent-bg)] px-2 py-0.5 font-mono text-xs text-[var(--color-accent)]"
+                  >
+                    {entry}
+                    <button
+                      type="button"
+                      onClick={() => toggleDetailEntry(entry)}
+                      className="opacity-60 hover:text-red-500 hover:opacity-100"
+                    >
+                      <X size={11} />
+                    </button>
+                  </span>
+                ))}
+                {detailEntries.length === 0 && (
+                  <span className="text-xs text-red-500">清单为空，请至少选择一个条目</span>
+                )}
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setShowDetail(null)}
+                className="rounded-lg px-3 py-2 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]"
+              >
+                取消
+              </button>
+              <button
+                onClick={applyDetail}
+                className="rounded-lg bg-[var(--color-accent-dark)] px-4 py-2 text-sm text-white hover:bg-[var(--color-accent)]"
+              >
+                应用并同步
               </button>
             </div>
           </div>

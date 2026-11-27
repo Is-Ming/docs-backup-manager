@@ -377,6 +377,25 @@ impl DocsStore {
         Ok(())
     }
 
+    /// 更新项目的同步清单（校验后写入）。
+    pub fn set_project_include(&self, id: i64, include_json: &str) -> Result<()> {
+        let repo_path: String = {
+            let conn = self.conn.lock().unwrap();
+            conn.query_row(
+                "SELECT repo_path FROM projects WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )?
+        };
+        validate_include_entries(&PathBuf::from(&repo_path), include_json).map_err(anyhow::Error::msg)?;
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE projects SET include_json = ?2, updated_at = datetime('now','localtime') WHERE id = ?1",
+            params![id, include_json],
+        )?;
+        Ok(())
+    }
+
     // ---------- sync state ----------
 
     pub fn get_state(&self, project_id: i64) -> Result<SyncStateRecord> {

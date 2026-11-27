@@ -1014,6 +1014,7 @@ pub fn run() {
             commands::docs_backup::docs_add_project,
             commands::docs_backup::docs_remove_project,
             commands::docs_backup::docs_set_project_enabled,
+            commands::docs_backup::docs_set_project_include,
             commands::docs_backup::docs_get_state,
             commands::docs_backup::docs_sync_now,
             commands::docs_backup::docs_sync_one,
