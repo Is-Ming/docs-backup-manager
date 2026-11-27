@@ -1,6 +1,6 @@
 {
   "app": {
-    "name": "Skills Manager"
+    "name": "docs-backup-manager"
   },
   "sidebar": {
     "dashboard": "Panel",
@@ -17,7 +17,7 @@
   },
   "help": {
     "eyebrow": "Guía",
-    "title": "Inicio rápido de Skills Manager",
+    "title": "Inicio rápido de docs-backup-manager",
     "description": "Ruta más rápida: instala skills → abre el Espacio de trabajo global → haz clic en una píldora de preset para activar. Pulsa ⌘K en cualquier momento para la paleta de comandos. Usa los Espacios de trabajo de proyecto, la Copia de seguridad con Git y los Ajustes según lo necesites.",
     "items": {
       "workflows": {
@@ -38,7 +38,7 @@
       },
       "global": {
         "title": "Espacio de trabajo global",
-        "description": "Cada agente tiene su propia página con todos los skills de su carpeta global, incluidos los instalados fuera de Skills Manager, para que la vista coincida con lo que el agente realmente ve. Usa + Agregar skills para traer desde tu biblioteca central con chips de agentes de destino en línea, o usa la vista general Todos los agentes para gestionar cada agente instalado a la vez. Los skills que solo existen en una carpeta de agente se pueden eliminar directamente desde la tarjeta."
+        "description": "Cada agente tiene su propia página con todos los skills de su carpeta global, incluidos los instalados fuera de docs-backup-manager, para que la vista coincida con lo que el agente realmente ve. Usa + Agregar skills para traer desde tu biblioteca central con chips de agentes de destino en línea, o usa la vista general Todos los agentes para gestionar cada agente instalado a la vez. Los skills que solo existen en una carpeta de agente se pueden eliminar directamente desde la tarjeta."
       },
       "projects": {
         "title": "Espacios de trabajo de proyecto",
@@ -138,7 +138,7 @@
       "deleteRemoteOpened": "Ajustes del repositorio abiertos en el navegador. Después de eliminar, usa \"Desconectar esta máquina\" para borrar la conexión local.",
       "desc": "Elimina la conexión de copia y la credencial de acceso guardada solo en esta máquina. Los skills locales y los datos remotos de copia se conservan.",
       "revoke": "Revocar autorización",
-      "revokeConfirmOauth": "Se abrirá la página de ajustes de aplicaciones de GitHub — elimina \"skills-manager\" allí. Esto invalida la autorización en TODOS tus dispositivos y esta máquina se desconectará ahora. Los datos remotos de copia se conservan.",
+      "revokeConfirmOauth": "Se abrirá la página de ajustes de aplicaciones de GitHub — elimina \"docs-backup-manager\" allí. Esto invalida la autorización en TODOS tus dispositivos y esta máquina se desconectará ahora. Los datos remotos de copia se conservan.",
       "revokeConfirmPat": "Se abrirá la página de ajustes de tokens de GitHub — elimina allí el token de copia. Los dispositivos que usan ese token pierden el acceso y esta máquina se desconectará ahora. Los datos remotos de copia se conservan.",
       "revokeConfirmTitle": "¿Revocar la autorización de GitHub?",
       "revokeConfirmUnknown": "Se abrirán las páginas de autorización de aplicaciones y de tokens de GitHub — revoca la que estuviera usando esta máquina. Esta máquina se desconectará ahora. Los datos remotos de copia se conservan.",
@@ -714,7 +714,7 @@
     "openInFinder": "Abrir carpeta",
     "otherAgentsSection": "Otros agentes compatibles ({{count}})",
     "overridePathHint": "Usando una ruta de skills personalizada manualmente",
-    "panicBanner": "Skills Manager se bloqueó durante la última sesión ({{time}}).",
+    "panicBanner": "docs-backup-manager se bloqueó durante la última sesión ({{time}}).",
     "panicDismiss": "Descartar",
     "pathOverridden": "Ruta personalizada",
     "pathReset": "Ruta del agente restablecida al valor predeterminado",
@@ -745,9 +745,9 @@
     "repoPathReset": "Ruta de la biblioteca central restablecida al valor predeterminado",
     "repoPathRestartNotice": "Reinicia la aplicación para aplicar la nueva ruta y migrar los datos existentes.",
     "repoPathSaved": "Ruta de la biblioteca central actualizada",
-    "repoWarning_config_unreadable": "El archivo de configuración de la biblioteca central es ilegible o está dañado, por lo que esta sesión ha vuelto a la ubicación predeterminada (~/.skills-manager). Si tu biblioteca parece vacía, tus datos siguen en la ruta configurada anteriormente; restablece «Ruta de la biblioteca central» a esa ruta.",
+    "repoWarning_config_unreadable": "El archivo de configuración de la biblioteca central es ilegible o está dañado, por lo que esta sesión ha vuelto a la ubicación predeterminada (~/.docs-backup-manager). Si tu biblioteca parece vacía, tus datos siguen en la ruta configurada anteriormente; restablece «Ruta de la biblioteca central» a esa ruta.",
     "repoWarning_migration_incomplete": "No se pudo completar el traslado de tu biblioteca central a la nueva ubicación, por lo que esta sesión está usando tu biblioteca existente en su ubicación actual; no se ha perdido nada. Para completar el traslado, abre Ajustes y apunta «Ruta de la biblioteca central» a una carpeta vacía con permiso de escritura (pulsa Editar para ver el destino que elegiste), luego reinicia. Tu biblioteca actual permanece donde está hasta que el traslado se complete; no la elimines.",
-    "repoWarning_repo_path_invalid": "La ruta configurada de la biblioteca central no es válida, por lo que esta sesión ha vuelto a la ubicación predeterminada (~/.skills-manager). Si tu biblioteca parece vacía, restablece «Ruta de la biblioteca central» a donde estén tus datos.",
+    "repoWarning_repo_path_invalid": "La ruta configurada de la biblioteca central no es válida, por lo que esta sesión ha vuelto a la ubicación predeterminada (~/.docs-backup-manager). Si tu biblioteca parece vacía, restablece «Ruta de la biblioteca central» a donde estén tus datos.",
     "reportIssue": "Informar de un problema",
     "reportIssueExportHint": "Si el problema es complejo, haz clic en «Exportar registros» en Ajustes → Acerca de y adjunta el zip a este issue.",
     "reportIssueHint": "Copia la información de la aplicación/sistema y un extracto reciente del registro al portapapeles y abre un nuevo issue en GitHub",
@@ -781,8 +781,8 @@
     "trayIconOffHint": "El icono de la bandeja está oculto, por lo que cerrar la ventana cerrará la aplicación.",
     "updateAvailable": "¡Nueva versión {{version}} disponible!",
     "updateError": "Error en la actualización automática. Abriendo página de descarga…",
-    "updateRelocate": "Mueve Skills Manager a tu carpeta de Aplicaciones y ábrelo desde allí para actualizarlo directamente.",
-    "version": "Skills Manager {{version}}",
+    "updateRelocate": "Mueve docs-backup-manager a tu carpeta de Aplicaciones y ábrelo desde allí para actualizarlo directamente.",
+    "version": "docs-backup-manager {{version}}",
     "viewUpdate": "Ver",
     "website": "Sitio web"
   },

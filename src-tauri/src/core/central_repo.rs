@@ -94,7 +94,7 @@ fn default_base_dir() -> PathBuf {
     home_base_dir()
 }
 
-/// `~/.skills-manager`, ignoring any configured relocation.
+/// `~/.docs-backup-manager`, ignoring any configured relocation.
 ///
 /// The library can be moved anywhere the user likes, but a few things must
 /// stay where another program can find them without being told — the CLI
@@ -106,11 +106,11 @@ pub fn home_base_dir() -> PathBuf {
         .unwrap()
         .clone()
     {
-        return path.join(".skills-manager");
+        return path.join(".docs-backup-manager");
     }
     dirs::home_dir()
         .expect("Cannot determine home directory")
-        .join(".skills-manager")
+        .join(".docs-backup-manager")
 }
 
 #[cfg(test)]
@@ -141,7 +141,7 @@ fn config_file_path() -> PathBuf {
     }
     dirs::config_dir()
         .unwrap_or_else(default_base_dir)
-        .join("skills-manager")
+        .join("docs-backup-manager")
         .join(CONFIG_FILE_NAME)
 }
 
@@ -417,7 +417,7 @@ pub fn logs_dir() -> PathBuf {
 }
 
 pub fn db_path() -> PathBuf {
-    base_dir().join("skills-manager.db")
+    base_dir().join("docs-backup-manager.db")
 }
 
 pub fn set_base_dir_override(path: Option<String>) -> Result<PathBuf> {
@@ -532,7 +532,7 @@ fn copy_symlink(source: &Path, destination: &Path) -> Result<()> {
 
 /// Files the app recreates on its own. A target holding nothing else is not a
 /// library: it is what an earlier session or the CLI bridge left behind.
-const REGENERABLE_ROOT_FILES: &[&str] = &[".skills-manager.lock", "git-askpass.sh"];
+const REGENERABLE_ROOT_FILES: &[&str] = &[".docs-backup-manager.lock", "git-askpass.sh"];
 /// OS metadata, debris wherever it appears.
 const OS_METADATA_FILES: &[&str] = &[".DS_Store", "Thumbs.db", "desktop.ini"];
 
@@ -1026,7 +1026,7 @@ mod tests {
         let dst = home_base_dir(); // moving back to the default home
         fs::write(src.path().join("a.txt"), b"src").unwrap();
         fs::create_dir_all(&dst).unwrap();
-        fs::write(dst.join(".skills-manager.lock"), b"pid=1").unwrap();
+        fs::write(dst.join(".docs-backup-manager.lock"), b"pid=1").unwrap();
         fs::write(dst.join(".DS_Store"), b"").unwrap();
         fs::create_dir_all(dst.join("skills")).unwrap();
         fs::create_dir_all(dst.join("cache/repos")).unwrap();
@@ -1233,13 +1233,13 @@ mod tests {
         let dst = tempfile::tempdir().unwrap();
         fs::write(src.path().join("a.txt"), b"src").unwrap();
         fs::create_dir_all(dst.path().join("bin")).unwrap();
-        fs::write(dst.path().join("bin/skills-manager-cli"), b"mine").unwrap();
+        fs::write(dst.path().join("bin/docs-backup-manager-cli"), b"mine").unwrap();
 
         let mut config = config_migrating(src.path(), dst.path());
         let outcome = migrate_repo_if_needed(&mut config, dst.path());
 
         assert!(matches!(outcome, MigrationOutcome::UseSource));
-        assert!(dst.path().join("bin/skills-manager-cli").exists());
+        assert!(dst.path().join("bin/docs-backup-manager-cli").exists());
     }
 
     #[test]
@@ -1263,7 +1263,7 @@ mod tests {
         let src = tempfile::tempdir().unwrap();
         let dst = tempfile::tempdir().unwrap();
         fs::write(src.path().join("a.txt"), b"src").unwrap();
-        fs::write(dst.path().join(".skills-manager.lock"), b"").unwrap();
+        fs::write(dst.path().join(".docs-backup-manager.lock"), b"").unwrap();
         fs::create_dir_all(dst.path().join("skills/mine")).unwrap();
         fs::write(dst.path().join("skills/mine/SKILL.md"), b"x").unwrap();
 
@@ -1271,7 +1271,7 @@ mod tests {
         let outcome = migrate_repo_if_needed(&mut config, dst.path());
 
         assert!(matches!(outcome, MigrationOutcome::UseSource));
-        assert!(dst.path().join(".skills-manager.lock").exists());
+        assert!(dst.path().join(".docs-backup-manager.lock").exists());
         assert!(dst.path().join("skills/mine/SKILL.md").exists());
         assert_eq!(config.repoint_from, None);
     }

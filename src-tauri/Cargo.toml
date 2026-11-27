@@ -1,12 +1,12 @@
 [package]
-name = "skills-manager"
-version = "1.45.0"
-description = "Skills Manager - AI Agent Skills Central Manager"
-authors = ["tianliang"]
+name = "docs-backup-manager"
+version = "0.1.0"
+description = "docs-backup-manager - AI 开发文档统一备份工具"
+authors = ["ming"]
 license = "MIT"
 edition = "2021"
 rust-version = "1.77.2"
-default-run = "skills-manager"
+default-run = "docs-backup-manager"
 
 [lib]
 name = "app_lib"

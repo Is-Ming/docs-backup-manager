@@ -1717,7 +1717,7 @@ fn ensure_gitignore(skills_dir: &Path) -> Result<()> {
         ".DS_Store",
         "Thumbs.db",
         "*.tmp",
-        ".skills-manager.lock",
+        ".docs-backup-manager.lock",
         PYTHON_ARTIFACT_IGNORES[0],
         PYTHON_ARTIFACT_IGNORES[1],
     ];
@@ -2188,7 +2188,7 @@ mod tests {
         for required in [
             ".DS_Store",
             "Thumbs.db",
-            ".skills-manager.lock",
+            ".docs-backup-manager.lock",
             "__pycache__/",
             "*.pyc",
         ] {

@@ -208,7 +208,7 @@ export function Settings() {
   const [editingIconFor, setEditingIconFor] = useState<string | null>(null);
   const [showMoreAgents, setShowMoreAgents] = useState(false);
 
-  const GITHUB_URL = "https://github.com/xingkongliang/skills-manager";
+  const GITHUB_URL = "https://github.com/xingkongliang/docs-backup-manager";
   const WEBSITE_URL = "https://skillsmanager.dev";
 
   const startEditPath = useCallback((key: string, currentPath: string) => {
@@ -646,7 +646,7 @@ export function Settings() {
             enabledCustomCount > 0 ? `${enabledCustomCount} custom` : "",
           ].filter(Boolean).join(", ");
       const parts = [
-        "**Diagnostics** (auto-collected by Skills Manager)",
+        "**Diagnostics** (auto-collected by docs-backup-manager)",
         "",
         `- App version: \`${info.app_version}\``,
         `- OS: \`${info.os} ${info.os_version} (${info.arch})\``,

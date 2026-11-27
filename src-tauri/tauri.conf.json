@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "docs-backup-manager · AI 开发文档备份",
+        "title": "docs-backup-manager · 项目文档备份",
         "width": 1440,
         "height": 860,
         "minWidth": 1100,

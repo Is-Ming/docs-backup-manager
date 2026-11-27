@@ -14,7 +14,7 @@ interface ViewPreference {
   groupBySource: boolean;
 }
 
-const STORAGE_KEY = "skills-manager.skillViewMode";
+const STORAGE_KEY = "docs-backup-manager.skillViewMode";
 
 const DEFAULT_PREFERENCE: ViewPreference = { viewMode: "grid", groupBySource: false };
 

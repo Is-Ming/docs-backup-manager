@@ -154,7 +154,7 @@ export function ProjectDetail() {
   const [batchDeleteConfirm, setBatchDeleteConfirm] = useState(false);
   const [batchTagDialogOpen, setBatchTagDialogOpen] = useState(false);
   const [batchToggling, setBatchToggling] = useState(false);
-  const PROJECT_ADD_CALLOUT_KEY = "skills-manager.projectAddCalloutDismissed";
+  const PROJECT_ADD_CALLOUT_KEY = "docs-backup-manager.projectAddCalloutDismissed";
   const [showAddCallout, setShowAddCallout] = useState(() => {
     try {
       return localStorage.getItem(PROJECT_ADD_CALLOUT_KEY) !== "1";

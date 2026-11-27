@@ -737,7 +737,7 @@ pub async fn update_install_blocker() -> Result<Option<String>, AppError> {
             return Ok(None);
         };
         match tempfile::Builder::new()
-            .prefix(".skills-manager-update-probe")
+            .prefix(".docs-backup-manager-update-probe")
             .tempfile_in(parent)
         {
             Ok(_) => Ok(None),
