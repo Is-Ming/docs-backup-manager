@@ -38,3 +38,6 @@ CLAUDE.md
 AGENTS.md
 .loop-log
 
+
+# 示例/设计稿等本地演示文件，禁止提交到远程
+design/
