@@ -1,7 +1,7 @@
 {
-  "name": "skills-manager",
+  "name": "docs-backup-manager",
   "private": true,
-  "version": "1.45.0",
+  "version": "0.1.0",
   "license": "MIT",
   "type": "module",
   "scripts": {
